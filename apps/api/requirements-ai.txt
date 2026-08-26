@@ -1,0 +1,13 @@
+# Optional local-AI upgrades. Install only on a GPU-capable worker.
+# Core PixelPro does not require these packages.
+
+torch
+torchvision
+realesrgan
+basicsr
+facexlib
+gfpgan
+diffusers
+transformers
+accelerate
+safetensors
