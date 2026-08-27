@@ -7,7 +7,7 @@ import zipfile
 from io import BytesIO, StringIO
 
 from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.automotive import (
@@ -19,14 +19,22 @@ from app.automotive import (
     roi_estimate,
     sku_from_filename,
 )
-from app.platform_store import authenticate_token, create_job, record_usage, update_job
+from app.plans import plan_for
+from app.platform_store import (
+    authenticate_token,
+    create_job,
+    get_plan_id,
+    record_usage,
+    update_job,
+    usage_summary,
+)
 from app.services.image_processor import compose, hamming_distance, perceptual_hash, quality_report
 
 router = APIRouter(prefix="/api/v1/automotive", tags=["automotive"])
 
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_UPLOAD_MB = int(os.getenv("PIXELPRO_MAX_UPLOAD_MB", "20"))
-MAX_CATALOG_BATCH = int(os.getenv("PIXELPRO_MAX_CATALOG_BATCH", "200"))
+MAX_CATALOG_BATCH = int(os.getenv("PIXELPRO_MAX_CATALOG_BATCH", "500"))
 
 
 class RoiRequest(BaseModel):
@@ -61,6 +69,30 @@ async def _read_image(file: UploadFile) -> bytes:
     if len(data) > MAX_UPLOAD_MB * 1024 * 1024:
         raise HTTPException(status_code=413, detail=f"{file.filename or 'Image'} exceeds {MAX_UPLOAD_MB}MB")
     return data
+
+
+def _enforce_plan_limits(user: dict, image_count: int) -> tuple[dict, int]:
+    account_plan = plan_for(get_plan_id(user["id"]))
+    effective_batch_limit = min(MAX_CATALOG_BATCH, int(account_plan["batch_limit"]))
+    if image_count > effective_batch_limit:
+        raise HTTPException(
+            status_code=413,
+            detail=f"{account_plan['name']} plan allows up to {effective_batch_limit} images per batch",
+        )
+
+    usage = usage_summary(user["id"])
+    monthly_limit = int(account_plan["images_per_month"])
+    already_used = int(usage["images_processed"])
+    remaining = max(0, monthly_limit - already_used)
+    if image_count > remaining:
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"Monthly image quota exceeded. {account_plan['name']} allows {monthly_limit} images/month "
+                f"and {remaining} remain this month."
+            ),
+        )
+    return account_plan, remaining
 
 
 @router.get("/profile")
@@ -129,10 +161,10 @@ async def process_catalog(
     user = _require_user(authorization)
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
-    if len(files) > MAX_CATALOG_BATCH:
-        raise HTTPException(status_code=413, detail=f"Catalog batch limit is {MAX_CATALOG_BATCH} images")
     if preset not in AUTOMOTIVE_PRESETS:
         raise HTTPException(status_code=400, detail="Unknown automotive preset")
+
+    account_plan, quota_remaining_before = _enforce_plan_limits(user, len(files))
 
     settings = AUTOMOTIVE_PRESETS[preset].copy()
     settings.pop("label", None)
@@ -211,6 +243,7 @@ async def process_catalog(
         summary = {
             "job_id": job_id,
             "company": user["company"],
+            "plan": account_plan["name"],
             "preset": preset,
             "vendor": vendor.strip(),
             "total": len(files),
@@ -235,5 +268,7 @@ async def process_catalog(
             "X-PixelPro-Job": job_id,
             "X-PixelPro-Completed": str(completed),
             "X-PixelPro-Failed": str(failed),
+            "X-PixelPro-Plan": str(account_plan["id"]),
+            "X-PixelPro-Quota-Remaining": str(max(0, quota_remaining_before - completed)),
         },
     )
