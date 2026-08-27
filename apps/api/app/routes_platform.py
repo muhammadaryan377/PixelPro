@@ -3,51 +3,18 @@ from __future__ import annotations
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
 
+from app.plans import plan_for, public_plans
 from app.platform_store import (
     authenticate_token,
     create_session,
     create_user,
+    get_plan_id,
     list_jobs,
     usage_summary,
     verify_user,
 )
 
 router = APIRouter(prefix="/api/v1", tags=["platform"])
-
-PLANS = [
-    {
-        "id": "trial",
-        "name": "Trial",
-        "price_monthly_usd": 0,
-        "images_per_month": 250,
-        "batch_limit": 25,
-        "features": ["Automotive presets", "Quality audit", "ZIP export"],
-    },
-    {
-        "id": "starter",
-        "name": "Starter",
-        "price_monthly_usd": 49,
-        "images_per_month": 1000,
-        "batch_limit": 100,
-        "features": ["Everything in Trial", "Catalog manifests", "SKU-safe filenames"],
-    },
-    {
-        "id": "business",
-        "name": "Business",
-        "price_monthly_usd": 149,
-        "images_per_month": 5000,
-        "batch_limit": 250,
-        "features": ["Everything in Starter", "Team workflow", "Priority processing"],
-    },
-    {
-        "id": "agency",
-        "name": "Agency",
-        "price_monthly_usd": 399,
-        "images_per_month": 20000,
-        "batch_limit": 500,
-        "features": ["Everything in Business", "API access", "White-label ready"],
-    },
-]
 
 
 class SignUpRequest(BaseModel):
@@ -77,11 +44,19 @@ def require_user(authorization: str | None) -> dict:
     return user
 
 
+def _account_payload(user: dict) -> dict:
+    return {
+        "user": user,
+        "plan": plan_for(get_plan_id(user["id"])),
+        "usage": usage_summary(user["id"]),
+    }
+
+
 @router.get("/plans")
 def get_plans() -> dict:
     return {
         "currency": "USD",
-        "plans": PLANS,
+        "plans": public_plans(),
         "note": "Commercial pricing is configurable before launch; payment collection is intentionally not hard-wired into the MVP.",
     }
 
@@ -93,7 +68,8 @@ def signup(payload: SignUpRequest) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     token = create_session(user["id"])
-    return {"token": token, "user": user, "plan": PLANS[0]}
+    result = _account_payload(user)
+    return {"token": token, **result}
 
 
 @router.post("/account/login")
@@ -102,13 +78,14 @@ def login(payload: LoginRequest) -> dict:
     if not user:
         raise HTTPException(status_code=401, detail="Invalid email or password")
     token = create_session(user["id"])
-    return {"token": token, "user": user, "plan": PLANS[0]}
+    result = _account_payload(user)
+    return {"token": token, **result}
 
 
 @router.get("/account/me")
 def me(authorization: str | None = Header(default=None)) -> dict:
     user = require_user(authorization)
-    return {"user": user, "plan": PLANS[0], "usage": usage_summary(user["id"])}
+    return _account_payload(user)
 
 
 @router.get("/account/usage")
