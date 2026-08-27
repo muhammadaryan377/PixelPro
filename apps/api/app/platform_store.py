@@ -42,6 +42,13 @@ def init_db() -> None:
                 created_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS account_plans (
+                user_id TEXT PRIMARY KEY,
+                plan_id TEXT NOT NULL DEFAULT 'trial',
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            );
+
             CREATE TABLE IF NOT EXISTS sessions (
                 token_hash TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
@@ -73,6 +80,13 @@ def init_db() -> None:
                 FOREIGN KEY(user_id) REFERENCES users(id)
             );
             """
+        )
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO account_plans (user_id, plan_id, updated_at)
+            SELECT id, 'trial', ? FROM users
+            """,
+            (_iso(),),
         )
 
 
@@ -110,6 +124,10 @@ def create_user(email: str, password: str, company: str) -> dict[str, Any]:
             conn.execute(
                 "INSERT INTO users (id, email, company, password_hash, salt, created_at) VALUES (?, ?, ?, ?, ?, ?)",
                 (user_id, normalized, company, password_hash, salt, created_at),
+            )
+            conn.execute(
+                "INSERT INTO account_plans (user_id, plan_id, updated_at) VALUES (?, 'trial', ?)",
+                (user_id, created_at),
             )
     except sqlite3.IntegrityError as exc:
         raise ValueError("An account with this email already exists") from exc
@@ -158,6 +176,23 @@ def authenticate_token(token: str) -> dict[str, Any] | None:
             (token_hash, now),
         ).fetchone()
     return _public_user(row) if row else None
+
+
+def get_plan_id(user_id: str) -> str:
+    with _connect() as conn:
+        row = conn.execute("SELECT plan_id FROM account_plans WHERE user_id = ?", (user_id,)).fetchone()
+    return str(row["plan_id"]) if row else "trial"
+
+
+def set_plan_id(user_id: str, plan_id: str) -> None:
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO account_plans (user_id, plan_id, updated_at) VALUES (?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET plan_id = excluded.plan_id, updated_at = excluded.updated_at
+            """,
+            (user_id, plan_id, _iso()),
+        )
 
 
 def record_usage(user_id: str, operation: str, images: int) -> None:
