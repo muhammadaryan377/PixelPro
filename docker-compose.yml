@@ -8,8 +8,13 @@ services:
     environment:
       - PIXELPRO_MAX_UPLOAD_MB=20
       - PIXELPRO_MAX_BATCH=50
+      - PIXELPRO_REMBG_MODEL=u2netp
+      - PIXELPRO_REMBG_POST_PROCESS=false
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_VISION_MODEL=${GROQ_VISION_MODEL:-qwen/qwen3.6-27b}
     volumes:
       - ./apps/api:/app
+      - rembg-models:/root/.u2net
 
   web:
     build:
@@ -24,3 +29,6 @@ services:
       - /app/node_modules
     depends_on:
       - api
+
+volumes:
+  rembg-models:

@@ -18,6 +18,7 @@ from app.services.image_processor import (
     perceptual_hash,
     quality_report,
 )
+from app.services.groq_watermark import detect_watermark_boxes, remove_detected_watermarks
 
 app = FastAPI(title="PixelPro API", version="0.2.0")
 
@@ -28,6 +29,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Watermarks-Detected"],
 )
 
 MAX_UPLOAD_MB = int(os.getenv("PIXELPRO_MAX_UPLOAD_MB", "20"))
@@ -94,6 +96,7 @@ def features() -> dict:
             "format-conversion",
             "compression",
         ],
+        "cloud_ai": {"groq_watermark_detection": bool(os.getenv("GROQ_API_KEY", "").strip())},
         "optional_local_ai": ["realesrgan-upscale", "lama-inpainting", "diffusers-background-generation"],
     }
 
@@ -153,6 +156,23 @@ async def cleanup(file: UploadFile = File(...), mask: UploadFile = File(...), ra
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return Response(content=result, media_type="image/png")
+
+
+@app.post("/api/v1/auto-watermark-removal")
+async def auto_watermark_removal(file: UploadFile = File(...)) -> Response:
+    source = await read_image(file)
+    try:
+        boxes, _, _ = await detect_watermark_boxes(source)
+        if not boxes:
+            raise HTTPException(status_code=422, detail="No confident watermark was detected")
+        result = remove_detected_watermarks(source, boxes)
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        message = str(exc)
+        status = 503 if "GROQ_API_KEY" in message else 502 if "Groq" in message else 400
+        raise HTTPException(status_code=status, detail=message) from exc
+    return Response(content=result, media_type="image/png", headers={"X-Watermarks-Detected": str(len(boxes))})
 
 
 @app.post("/api/v1/quality-check")

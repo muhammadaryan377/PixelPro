@@ -17,6 +17,7 @@ Upload one image or a complete product catalog and turn inconsistent raw photos 
 - CPU smart upscale in the core build
 - Product shadow generation
 - Manual brush-mask object / mark cleanup using OpenCV inpainting
+- One-click Groq Vision watermark detection with guarded local inpainting
 - JPEG, PNG and WebP conversion + compression controls
 - Marketplace-oriented editable presets
 - Reference-image matching: copy canvas size, product occupancy, background estimate and positioning from a good example
@@ -84,6 +85,10 @@ apps/
 
 ### Docker
 
+Copy `.env.example` to `.env` and set `GROQ_API_KEY` to enable automatic
+watermark detection. Keep the key server-side; never expose it through a
+`NEXT_PUBLIC_` variable.
+
 ```bash
 docker compose up --build
 ```
@@ -114,6 +119,22 @@ npm run dev
 
 The first background-removal request downloads the selected open-source rembg model and caches it locally.
 
+## Product workflow
+
+1. Upload one product image or a batch.
+2. Run quality analysis or Auto Optimize.
+3. Use Watermark Remover: Groq can auto-detect overlay regions, while the
+   manual brush remains available for review and refinement.
+4. Adjust background, composition, brightness, contrast, saturation,
+   sharpness, denoise, upscale and export quality.
+5. Process the image. PixelPro validates the processed output and shows it
+   before download.
+6. Download a single image manually, or prepare a batch ZIP and download it
+   only when ready.
+
+Automatic watermark detection can be imperfect. Use it only for images you
+own or are authorized to edit, and review the preview before export.
+
 ## API
 
 - `GET /health`
@@ -122,6 +143,7 @@ The first background-removal request downloads the selected open-source rembg mo
 - `POST /api/v1/process-image`
 - `POST /api/v1/process-batch`
 - `POST /api/v1/cleanup`
+- `POST /api/v1/auto-watermark-removal`
 - `POST /api/v1/quality-check`
 - `POST /api/v1/analyze-reference`
 - `POST /api/v1/find-duplicates`

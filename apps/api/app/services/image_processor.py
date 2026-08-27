@@ -46,9 +46,10 @@ def _rembg_session(model_name: str):
 
 
 def remove_background(image: Image.Image, model_name: str | None = None) -> Image.Image:
-    model = model_name or os.getenv("PIXELPRO_REMBG_MODEL", "isnet-general-use")
+    model = model_name or os.getenv("PIXELPRO_REMBG_MODEL", "u2netp")
+    post_process = os.getenv("PIXELPRO_REMBG_POST_PROCESS", "false").lower() in {"1", "true", "yes"}
     session = _rembg_session(model)
-    result = remove(image, session=session, post_process_mask=True)
+    result = remove(image, session=session, post_process_mask=post_process)
     return result.convert("RGBA")
 
 
@@ -108,7 +109,11 @@ def enhance(
     rgb = ImageEnhance.Brightness(rgb).enhance(max(0.5, min(brightness, 1.5)))
     rgb = ImageEnhance.Contrast(rgb).enhance(max(0.5, min(contrast, 1.8)))
     rgb = ImageEnhance.Color(rgb).enhance(max(0.0, min(saturation, 2.0)))
-    rgb = ImageEnhance.Sharpness(rgb).enhance(max(0.0, min(sharpness, 3.0)))
+    sharpness = max(0.0, min(sharpness, 3.0))
+    if sharpness > 1.0:
+        rgb = rgb.filter(ImageFilter.UnsharpMask(radius=1.2, percent=round((sharpness - 1.0) * 110), threshold=3))
+    elif sharpness < 1.0:
+        rgb = ImageEnhance.Sharpness(rgb).enhance(sharpness)
     result = rgb.convert("RGBA")
     result.putalpha(alpha)
     return result
@@ -169,7 +174,7 @@ def _encode(image: Image.Image, output_format: OutputFormat, quality: int) -> by
     output = BytesIO()
     quality = max(60, min(int(quality), 100))
     if output_format == "JPEG":
-        image.convert("RGB").save(output, "JPEG", quality=quality, optimize=True, progressive=True)
+        image.convert("RGB").save(output, "JPEG", quality=quality, subsampling=0, optimize=True, progressive=True)
     elif output_format == "WEBP":
         image.save(output, "WEBP", quality=quality, method=6)
     elif output_format == "PNG":
