@@ -3,10 +3,56 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+MARKETPLACE_PROFILES = {
+    "amazon-main-1600": {
+        "marketplace": "Amazon",
+        "label": "Amazon Main Image — 1600",
+        "description": "Pure-white main-image profile with high product occupancy.",
+        "verified_on": "2026-08-27",
+        "rules_summary": [
+            "Pure white background (RGB 255,255,255) for main images",
+            "No added text, graphics or watermarks",
+            "Actual product must be clearly represented",
+            "1000+ px supports zoom; this profile uses 1600×1600",
+            "Target product occupancy is set above 85%",
+        ],
+        "source": "Amazon Seller Central image guidance",
+        "source_url": "https://sellercentral.amazon.com/seller-forums/discussions/t/13af96ea-6b07-4bf9-8dbe-a13292c2e3b1",
+    },
+    "ebay-1600": {
+        "marketplace": "eBay",
+        "label": "eBay Listing — 1600",
+        "description": "High-resolution neutral listing profile following current eBay picture policy.",
+        "verified_on": "2026-08-27",
+        "rules_summary": [
+            "At least 500 px on the longest side is required",
+            "eBay recommends 1600×1600 for high-quality listing photos",
+            "No added borders, text, artwork or watermarks",
+            "Used, damaged or defective items should use photos of the actual item",
+        ],
+        "source": "eBay Picture Policy and Seller Center photo tips",
+        "source_url": "https://www.ebay.com/help/Policy/-/Picture_policy?id=4370",
+    },
+    "shopify-square-2048": {
+        "marketplace": "Shopify",
+        "label": "Shopify Square — 2048",
+        "description": "Consistent 2048×2048 square product image for ecommerce storefronts.",
+        "verified_on": "2026-08-27",
+        "rules_summary": [
+            "Square product images commonly display best at 2048×2048",
+            "Product and collection images can be up to 5000×5000 or 25 megapixels",
+            "Files must be below 20 MB",
+            "Consistent aspect ratios improve collection-page presentation",
+        ],
+        "source": "Shopify Help Center product media guidance",
+        "source_url": "https://help.shopify.com/en/manual/products/product-media/product-media-types",
+    },
+}
+
 AUTOMOTIVE_PRESETS = {
     "auto-white-1600": {
-        "label": "Auto Parts — White Marketplace",
-        "description": "Clean white square for catalog and marketplace listings.",
+        "label": "Auto Parts — White Catalog",
+        "description": "Clean white square for general automotive catalog use.",
         "width": 1600,
         "height": 1600,
         "background": "#FFFFFF",
@@ -18,6 +64,39 @@ AUTOMOTIVE_PRESETS = {
         "remove_bg": True,
         "enhance_quality": True,
         "add_product_shadow": False,
+        "profile": "generic",
+    },
+    "amazon-main-1600": {
+        "label": "Amazon Main Image — 1600",
+        "description": "Pure white automotive main-image starting profile with 88% target product occupancy.",
+        "width": 1600,
+        "height": 1600,
+        "background": "#FFFFFF",
+        "background_style": "solid",
+        "product_scale": 0.88,
+        "padding": 0.06,
+        "output_format": "JPEG",
+        "quality": 95,
+        "remove_bg": True,
+        "enhance_quality": True,
+        "add_product_shadow": False,
+        "profile": "amazon-main-1600",
+    },
+    "ebay-1600": {
+        "label": "eBay Listing — 1600",
+        "description": "High-resolution automotive listing image on a clean neutral background.",
+        "width": 1600,
+        "height": 1600,
+        "background": "#FFFFFF",
+        "background_style": "solid",
+        "product_scale": 0.84,
+        "padding": 0.08,
+        "output_format": "JPEG",
+        "quality": 94,
+        "remove_bg": True,
+        "enhance_quality": True,
+        "add_product_shadow": False,
+        "profile": "ebay-1600",
     },
     "auto-blue-1024": {
         "label": "Auto Parts — Blue Catalog",
@@ -33,6 +112,7 @@ AUTOMOTIVE_PRESETS = {
         "remove_bg": True,
         "enhance_quality": True,
         "add_product_shadow": False,
+        "profile": "generic",
     },
     "auto-studio-1600": {
         "label": "Auto Parts — Soft Studio",
@@ -50,10 +130,11 @@ AUTOMOTIVE_PRESETS = {
         "add_product_shadow": True,
         "shadow_opacity": 50,
         "shadow_blur": 24,
+        "profile": "generic",
     },
     "auto-shopify-2048": {
-        "label": "Auto Parts — Shopify 2048",
-        "description": "Large square web asset with efficient WEBP export.",
+        "label": "Shopify Square — 2048",
+        "description": "2048×2048 square storefront asset with efficient WEBP export.",
         "width": 2048,
         "height": 2048,
         "background": "#FFFFFF",
@@ -65,6 +146,7 @@ AUTOMOTIVE_PRESETS = {
         "remove_bg": True,
         "enhance_quality": True,
         "add_product_shadow": False,
+        "profile": "shopify-square-2048",
     },
 }
 
@@ -84,7 +166,8 @@ AUTO_CATEGORIES = [
 ]
 
 MARKETPLACE_NOTES = [
-    "Presets are production starting points, not marketplace-compliance guarantees.",
+    "Marketplace profiles are versioned production starting points, not permanent compliance guarantees.",
+    "Marketplace rules can vary by category, region and future policy changes; operators must review the current official marketplace guidance before publishing.",
     "Preserve genuine manufacturer labels, part numbers and physical markings unless the catalog owner explicitly chooses otherwise.",
     "Only process images the customer owns or is authorized to edit.",
 ]
