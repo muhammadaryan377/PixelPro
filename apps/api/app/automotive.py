@@ -97,7 +97,10 @@ def safe_slug(value: str, fallback: str = "part") -> str:
 
 
 def sku_from_filename(filename: str, index: int, prefix: str = "PART") -> str:
-    stem = Path(filename or "").stem.strip()
+    raw_name = Path(filename or "").name.strip()
+    stem = Path(raw_name).stem.strip()
+    if raw_name.startswith(".") and raw_name.count(".") == 1:
+        stem = ""
     cleaned = re.sub(r"[^A-Za-z0-9_-]+", "-", stem).strip("-_")
     if cleaned:
         return cleaned[:64].upper()
