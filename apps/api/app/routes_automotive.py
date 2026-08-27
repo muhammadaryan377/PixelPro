@@ -14,6 +14,7 @@ from app.automotive import (
     AUTO_CATEGORIES,
     AUTOMOTIVE_PRESETS,
     MARKETPLACE_NOTES,
+    MARKETPLACE_PROFILES,
     output_filename,
     quality_issues,
     roi_estimate,
@@ -119,6 +120,15 @@ def automotive_presets() -> dict:
     return AUTOMOTIVE_PRESETS
 
 
+@router.get("/marketplace-profiles")
+def marketplace_profiles() -> dict:
+    return {
+        "verified_on": "2026-08-27",
+        "profiles": MARKETPLACE_PROFILES,
+        "notes": MARKETPLACE_NOTES,
+    }
+
+
 @router.post("/roi")
 def automotive_roi(payload: RoiRequest) -> dict:
     return roi_estimate(
@@ -166,9 +176,11 @@ async def process_catalog(
 
     account_plan, quota_remaining_before = _enforce_plan_limits(user, len(files))
 
-    settings = AUTOMOTIVE_PRESETS[preset].copy()
+    preset_definition = AUTOMOTIVE_PRESETS[preset]
+    settings = preset_definition.copy()
     settings.pop("label", None)
     settings.pop("description", None)
+    settings.pop("profile", None)
     if background:
         settings["background"] = background
         settings["background_style"] = "solid"
@@ -193,6 +205,7 @@ async def process_catalog(
                 "sku": sku,
                 "vendor": vendor.strip(),
                 "preset": preset,
+                "marketplace_profile": preset_definition.get("profile", "generic"),
                 "status": "failed",
                 "output_filename": "",
                 "duplicate_of": "",
@@ -245,12 +258,14 @@ async def process_catalog(
             "company": user["company"],
             "plan": account_plan["name"],
             "preset": preset,
+            "marketplace_profile": preset_definition.get("profile", "generic"),
             "vendor": vendor.strip(),
             "total": len(files),
             "completed": completed,
             "failed": failed,
             "review_required": sum(1 for row in rows if row["status"] == "review"),
             "possible_duplicates": sum(1 for row in rows if row["duplicate_of"]),
+            "marketplace_note": "Versioned profile only; review current official marketplace rules and category-specific guidance before publishing.",
             "authorization_note": "Customer is responsible for ensuring they own or are authorized to edit uploaded imagery.",
         }
         zf.writestr("batch-report.json", json.dumps(summary, indent=2))
