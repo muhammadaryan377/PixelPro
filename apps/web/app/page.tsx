@@ -88,7 +88,7 @@ export default function Home() {
       <section className="proof-strip">
         <div className="shell proof-grid">
           <div><strong>One batch</strong><span>raw photos → catalog assets</span></div>
-          <div><strong>4 presets</strong><span>white, blue, studio, web</span></div>
+          <div><strong>6 presets</strong><span>white, blue, studio, web + marketplace profiles</span></div>
           <div><strong>1 export</strong><span>images + manifest + report</span></div>
           <div><strong>Auto focused</strong><span>parts sellers, dealers, dismantlers</span></div>
         </div>
