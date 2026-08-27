@@ -23,6 +23,19 @@ def test_plans_and_automotive_presets_are_exposed():
     presets = client.get("/api/v1/automotive/presets")
     assert presets.status_code == 200
     assert "auto-white-1600" in presets.json()
+    assert "amazon-main-1600" in presets.json()
+    assert "ebay-1600" in presets.json()
+    assert "auto-shopify-2048" in presets.json()
+
+
+def test_marketplace_profiles_are_versioned():
+    response = client.get("/api/v1/automotive/marketplace-profiles")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["verified_on"] == "2026-08-27"
+    assert "amazon-main-1600" in body["profiles"]
+    assert "ebay-1600" in body["profiles"]
+    assert "shopify-square-2048" in body["profiles"]
 
 
 def test_roi_endpoint_returns_explicit_assumption():
