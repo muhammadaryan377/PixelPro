@@ -37,7 +37,7 @@ type Preset = {
 
 type MeResponse = {
   user: { id: string; email: string; company: string };
-  plan: { name: string; images_per_month: number };
+  plan: { id: string; name: string; images_per_month: number; batch_limit: number };
   usage: { images_processed: number; month: string };
 };
 
@@ -78,6 +78,9 @@ export default function DashboardPage() {
   const [audit, setAudit] = useState<AuditResult | null>(null);
   const [auditing, setAuditing] = useState(false);
 
+  const batchLimit = me?.plan.batch_limit ?? 25;
+  const monthlyRemaining = me ? Math.max(0, me.plan.images_per_month - me.usage.images_processed) : 0;
+  const currentUploadLimit = Math.max(0, Math.min(batchLimit, monthlyRemaining || batchLimit));
   const previews = useMemo(() => files.slice(0, 8).map((file) => ({ file, url: URL.createObjectURL(file) })), [files]);
 
   useEffect(() => {
@@ -119,9 +122,10 @@ export default function DashboardPage() {
 
   function addFiles(incoming: FileList | File[]) {
     const next = Array.from(incoming).filter((file) => ["image/jpeg", "image/png", "image/webp"].includes(file.type));
-    setFiles((current) => [...current, ...next].slice(0, 200));
+    const limit = currentUploadLimit || batchLimit;
+    setFiles((current) => [...current, ...next].slice(0, limit));
     setAudit(null);
-    setMessage("");
+    setMessage(next.length ? "" : "Only JPG, PNG and WEBP images are supported.");
   }
 
   function chooseFiles(event: ChangeEvent<HTMLInputElement>) {
@@ -178,6 +182,7 @@ export default function DashboardPage() {
       const completed = response.headers.get("X-PixelPro-Completed") || files.length.toString();
       const failed = response.headers.get("X-PixelPro-Failed") || "0";
       setMessage(`Catalog exported: ${completed} processed, ${failed} failed. ZIP includes images, CSV manifest and batch report.`);
+      setFiles([]);
       await refreshAccount();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Catalog processing failed");
@@ -250,7 +255,7 @@ export default function DashboardPage() {
           <div className="workspace-intro">
             <div>
               <h2>Build a consistent parts catalog from raw product photos.</h2>
-              <p>Upload up to 200 JPG, PNG or WEBP images. PixelPro will standardize each part, flag likely duplicates and export a manifest alongside the processed images.</p>
+              <p>Your {me?.plan.name || "Trial"} plan allows {batchLimit} images per batch and {me?.plan.images_per_month || 250} images per month. PixelPro standardizes each part, flags likely duplicates and exports a manifest alongside the processed images.</p>
             </div>
             <button className="button button-ghost" onClick={auditFirstImage} disabled={!files.length || auditing}>
               {auditing ? <Loader2 size={17} className="spin" /> : <ScanSearch size={17} />} Audit first image
@@ -259,14 +264,14 @@ export default function DashboardPage() {
 
           <div className="studio-grid">
             <section className="studio-card studio-upload-card">
-              <div className="card-heading"><div><small>STEP 1</small><h3>Upload product images</h3></div><span>{files.length}/200</span></div>
+              <div className="card-heading"><div><small>STEP 1</small><h3>Upload product images</h3></div><span>{files.length}/{currentUploadLimit || batchLimit}</span></div>
               <div className="drop-zone" onDragOver={(e) => e.preventDefault()} onDrop={dropFiles}>
-                <input id="catalog-files" type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={chooseFiles} />
+                <input id="catalog-files" type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={chooseFiles} disabled={monthlyRemaining === 0} />
                 <label htmlFor="catalog-files">
                   <span className="upload-icon"><UploadCloud size={28} /></span>
-                  <strong>Drop supplier or warehouse images here</strong>
-                  <span>or click to browse your computer</span>
-                  <small>JPG, PNG, WEBP · 20MB each</small>
+                  <strong>{monthlyRemaining === 0 ? "Monthly image quota reached" : "Drop supplier or warehouse images here"}</strong>
+                  <span>{monthlyRemaining === 0 ? "Choose a higher plan when billing is enabled" : "or click to browse your computer"}</span>
+                  <small>JPG, PNG, WEBP · 20MB each · {monthlyRemaining} monthly images remaining</small>
                 </label>
               </div>
 
@@ -320,7 +325,7 @@ export default function DashboardPage() {
               <span className="export-icon"><FileArchive size={25} /></span>
               <div><small>STEP 3</small><h3>Process and export catalog</h3><p>Your ZIP will contain normalized product images, <code>catalog-manifest.csv</code> and <code>batch-report.json</code>.</p></div>
             </div>
-            <button className="button button-primary button-large" onClick={processCatalog} disabled={!files.length || processing}>
+            <button className="button button-primary button-large" onClick={processCatalog} disabled={!files.length || processing || monthlyRemaining === 0}>
               {processing ? <><Loader2 size={18} className="spin" /> Processing {files.length} images…</> : <><CloudDownload size={18} /> Process & download ZIP</>}
             </button>
           </section>
