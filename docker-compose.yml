@@ -8,13 +8,18 @@ services:
     environment:
       - PIXELPRO_MAX_UPLOAD_MB=20
       - PIXELPRO_MAX_BATCH=50
+      - PIXELPRO_MAX_CATALOG_BATCH=500
       - PIXELPRO_REMBG_MODEL=u2netp
       - PIXELPRO_REMBG_POST_PROCESS=false
+      - PIXELPRO_DB_PATH=/data/pixelpro.db
+      - PIXELPRO_SESSION_DAYS=30
+      - PIXELPRO_CORS_ORIGINS=http://localhost:3000
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - GROQ_VISION_MODEL=${GROQ_VISION_MODEL:-qwen/qwen3.6-27b}
     volumes:
       - ./apps/api:/app
       - rembg-models:/root/.u2net
+      - pixelpro-data:/data
 
   web:
     build:
@@ -32,3 +37,4 @@ services:
 
 volumes:
   rembg-models:
+  pixelpro-data:

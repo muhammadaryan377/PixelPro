@@ -9,7 +9,11 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 
+from app.platform_store import init_db
 from app.presets import PRESETS
+from app.routes_automotive import router as automotive_router
+from app.routes_platform import router as platform_router
+from app.services.groq_watermark import detect_watermark_boxes, remove_detected_watermarks
 from app.services.image_processor import (
     analyze_reference,
     compose,
@@ -18,9 +22,14 @@ from app.services.image_processor import (
     perceptual_hash,
     quality_report,
 )
-from app.services.groq_watermark import detect_watermark_boxes, remove_detected_watermarks
 
-app = FastAPI(title="PixelPro API", version="0.2.0")
+init_db()
+
+app = FastAPI(
+    title="PixelPro Automotive API",
+    version="0.3.0",
+    description="Ecommerce product-image automation with an automotive catalog workflow.",
+)
 
 allowed_origins = os.getenv("PIXELPRO_CORS_ORIGINS", "http://localhost:3000").split(",")
 app.add_middleware(
@@ -29,8 +38,11 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["X-Watermarks-Detected"],
+    expose_headers=["X-Watermarks-Detected", "X-PixelPro-Job", "X-PixelPro-Completed", "X-PixelPro-Failed"],
 )
+
+app.include_router(platform_router)
+app.include_router(automotive_router)
 
 MAX_UPLOAD_MB = int(os.getenv("PIXELPRO_MAX_UPLOAD_MB", "20"))
 MAX_BATCH = int(os.getenv("PIXELPRO_MAX_BATCH", "50"))
@@ -66,7 +78,7 @@ async def read_image(file: UploadFile) -> bytes:
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "service": "pixelpro-api", "version": "0.2.0"}
+    return {"status": "ok", "service": "pixelpro-api", "version": "0.3.0"}
 
 
 @app.get("/api/v1/presets")
@@ -77,7 +89,17 @@ def presets() -> dict:
 @app.get("/api/v1/features")
 def features() -> dict:
     return {
-        "free_local": [
+        "platform": [
+            "automotive-catalog-workspace",
+            "accounts-and-sessions",
+            "usage-tracking",
+            "processing-job-history",
+            "automotive-roi-calculator",
+            "catalog-manifest-export",
+            "sku-safe-output-filenames",
+            "possible-duplicate-detection",
+        ],
+        "image_operations": [
             "background-removal",
             "product-centering",
             "smart-resize",
