@@ -80,7 +80,7 @@ export default function DashboardPage() {
 
   const batchLimit = me?.plan.batch_limit ?? 25;
   const monthlyRemaining = me ? Math.max(0, me.plan.images_per_month - me.usage.images_processed) : 0;
-  const currentUploadLimit = Math.max(0, Math.min(batchLimit, monthlyRemaining || batchLimit));
+  const currentUploadLimit = Math.min(batchLimit, monthlyRemaining);
   const previews = useMemo(() => files.slice(0, 8).map((file) => ({ file, url: URL.createObjectURL(file) })), [files]);
 
   useEffect(() => {
@@ -121,9 +121,14 @@ export default function DashboardPage() {
   }, []);
 
   function addFiles(incoming: FileList | File[]) {
+    if (currentUploadLimit <= 0) {
+      setFiles([]);
+      setAudit(null);
+      setMessage("Monthly image quota reached. Upgrade the workspace plan before processing another catalog batch.");
+      return;
+    }
     const next = Array.from(incoming).filter((file) => ["image/jpeg", "image/png", "image/webp"].includes(file.type));
-    const limit = currentUploadLimit || batchLimit;
-    setFiles((current) => [...current, ...next].slice(0, limit));
+    setFiles((current) => [...current, ...next].slice(0, currentUploadLimit));
     setAudit(null);
     setMessage(next.length ? "" : "Only JPG, PNG and WEBP images are supported.");
   }
@@ -264,7 +269,7 @@ export default function DashboardPage() {
 
           <div className="studio-grid">
             <section className="studio-card studio-upload-card">
-              <div className="card-heading"><div><small>STEP 1</small><h3>Upload product images</h3></div><span>{files.length}/{currentUploadLimit || batchLimit}</span></div>
+              <div className="card-heading"><div><small>STEP 1</small><h3>Upload product images</h3></div><span>{files.length}/{currentUploadLimit}</span></div>
               <div className="drop-zone" onDragOver={(e) => e.preventDefault()} onDrop={dropFiles}>
                 <input id="catalog-files" type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={chooseFiles} disabled={monthlyRemaining === 0} />
                 <label htmlFor="catalog-files">
