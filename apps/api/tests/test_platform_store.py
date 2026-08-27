@@ -7,6 +7,10 @@ def test_account_session_and_usage_flow(tmp_path):
 
     user = platform_store.create_user("ops@example.com", "strong-pass-123", "Apex Parts")
     assert user["company"] == "Apex Parts"
+    assert platform_store.get_plan_id(user["id"]) == "trial"
+
+    platform_store.set_plan_id(user["id"], "starter")
+    assert platform_store.get_plan_id(user["id"]) == "starter"
 
     verified = platform_store.verify_user("ops@example.com", "strong-pass-123")
     assert verified is not None
