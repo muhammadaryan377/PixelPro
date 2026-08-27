@@ -9,7 +9,6 @@ import {
   ChevronRight,
   CircleUserRound,
   CloudDownload,
-  FileArchive,
   FileCheck2,
   Gauge,
   History,
@@ -24,6 +23,8 @@ import {
   X,
 } from "lucide-react";
 
+import styles from "./dashboard.module.css";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 type Preset = {
@@ -33,6 +34,7 @@ type Preset = {
   height: number;
   background: string;
   output_format: string;
+  product_scale?: number;
 };
 
 type MeResponse = {
@@ -71,7 +73,8 @@ export default function DashboardPage() {
   const [skuPrefix, setSkuPrefix] = useState("PART");
   const [jobName, setJobName] = useState("Automotive catalog batch");
   const [background, setBackground] = useState("");
-  const [productScale, setProductScale] = useState("0.80");
+  const [productScale, setProductScale] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -81,7 +84,11 @@ export default function DashboardPage() {
   const batchLimit = me?.plan.batch_limit ?? 25;
   const monthlyRemaining = me ? Math.max(0, me.plan.images_per_month - me.usage.images_processed) : 0;
   const currentUploadLimit = Math.min(batchLimit, monthlyRemaining);
-  const previews = useMemo(() => files.slice(0, 8).map((file) => ({ file, url: URL.createObjectURL(file) })), [files]);
+  const selectedPreset = presets[preset];
+  const previews = useMemo(
+    () => files.slice(0, 12).map((file) => ({ file, url: URL.createObjectURL(file) })),
+    [files],
+  );
 
   useEffect(() => {
     return () => previews.forEach((item) => URL.revokeObjectURL(item.url));
@@ -124,13 +131,24 @@ export default function DashboardPage() {
     if (currentUploadLimit <= 0) {
       setFiles([]);
       setAudit(null);
-      setMessage("Monthly image quota reached. Upgrade the workspace plan before processing another catalog batch.");
+      setMessage("Monthly image quota reached. Upgrade the workspace plan before processing another batch.");
       return;
     }
-    const next = Array.from(incoming).filter((file) => ["image/jpeg", "image/png", "image/webp"].includes(file.type));
-    setFiles((current) => [...current, ...next].slice(0, currentUploadLimit));
+
+    const valid = Array.from(incoming).filter((file) =>
+      ["image/jpeg", "image/png", "image/webp"].includes(file.type),
+    );
+
+    setFiles((current) => {
+      const combined = [...current, ...valid];
+      if (combined.length > currentUploadLimit) {
+        setMessage(`Your current plan allows ${currentUploadLimit} more images in this batch.`);
+      } else {
+        setMessage(valid.length ? "" : "Only JPG, PNG and WEBP images are supported.");
+      }
+      return combined.slice(0, currentUploadLimit);
+    });
     setAudit(null);
-    setMessage(next.length ? "" : "Only JPG, PNG and WEBP images are supported.");
   }
 
   function chooseFiles(event: ChangeEvent<HTMLInputElement>) {
@@ -157,13 +175,14 @@ export default function DashboardPage() {
     if (!files.length || !token) return;
     setProcessing(true);
     setMessage("");
+
     try {
       const form = new FormData();
       files.forEach((file) => form.append("files", file));
       form.append("preset", preset);
       form.append("vendor", vendor);
       form.append("sku_prefix", skuPrefix);
-      form.append("job_name", jobName);
+      form.append("job_name", jobName || "Automotive catalog batch");
       if (background) form.append("background", background);
       if (productScale) form.append("product_scale", productScale);
 
@@ -172,11 +191,15 @@ export default function DashboardPage() {
         headers: { Authorization: `Bearer ${token}` },
         body: form,
       });
+
       if (!response.ok) {
         let detail = "Catalog processing failed";
-        try { detail = (await response.json()).detail || detail; } catch {}
+        try {
+          detail = (await response.json()).detail || detail;
+        } catch {}
         throw new Error(detail);
       }
+
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
@@ -184,10 +207,12 @@ export default function DashboardPage() {
       anchor.download = `pixelpro-automotive-${Date.now()}.zip`;
       anchor.click();
       URL.revokeObjectURL(url);
+
       const completed = response.headers.get("X-PixelPro-Completed") || files.length.toString();
       const failed = response.headers.get("X-PixelPro-Failed") || "0";
-      setMessage(`Catalog exported: ${completed} processed, ${failed} failed. ZIP includes images, CSV manifest and batch report.`);
+      setMessage(`Done — ${completed} images processed${failed !== "0" ? `, ${failed} failed` : ""}. Your catalog ZIP is ready.`);
       setFiles([]);
+      setAudit(null);
       await refreshAccount();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Catalog processing failed");
@@ -200,6 +225,7 @@ export default function DashboardPage() {
     if (!files.length) return;
     setAuditing(true);
     setAudit(null);
+
     try {
       const form = new FormData();
       form.append("file", files[0]);
@@ -220,10 +246,17 @@ export default function DashboardPage() {
     window.location.href = "/login";
   }
 
-  const usagePercent = me ? Math.min(100, Math.round((me.usage.images_processed / me.plan.images_per_month) * 100)) : 0;
+  const usagePercent = me
+    ? Math.min(100, Math.round((me.usage.images_processed / me.plan.images_per_month) * 100))
+    : 0;
 
   if (loading) {
-    return <main className="workspace-loading"><Loader2 size={28} className="spin" /><strong>Loading PixelPro workspace…</strong></main>;
+    return (
+      <main className="workspace-loading">
+        <Loader2 size={28} className="spin" />
+        <strong>Loading PixelPro workspace…</strong>
+      </main>
+    );
   }
 
   return (
@@ -233,16 +266,22 @@ export default function DashboardPage() {
           <span className="brand-icon"><Boxes size={20} /></span>
           <span><strong>PixelPro</strong><small>Automotive</small></span>
         </Link>
+
         <nav className="side-nav">
           <a className="active" href="#studio"><Gauge size={18} /> Catalog Studio</a>
           <a href="#history"><History size={18} /> Job History</a>
           <Link href="/pricing"><Sparkles size={18} /> Plans</Link>
         </nav>
+
         <div className="sidebar-usage">
-          <div className="sidebar-usage-title"><span>{me?.plan.name || "Trial"}</span><strong>{me?.usage.images_processed || 0}/{me?.plan.images_per_month || 250}</strong></div>
+          <div className="sidebar-usage-title">
+            <span>{me?.plan.name || "Trial"}</span>
+            <strong>{me?.usage.images_processed || 0}/{me?.plan.images_per_month || 250}</strong>
+          </div>
           <div className="usage-bar"><span style={{ width: `${usagePercent}%` }} /></div>
           <small>Images processed this month</small>
         </div>
+
         <button className="side-user" onClick={signOut}>
           <CircleUserRound size={28} />
           <span><strong>{me?.user.company || "Workspace"}</strong><small>{me?.user.email || ""}</small></span>
@@ -257,98 +296,173 @@ export default function DashboardPage() {
         </header>
 
         <div className="workspace-content" id="studio">
-          <div className="workspace-intro">
-            <div>
-              <h2>Build a consistent parts catalog from raw product photos.</h2>
-              <p>Your {me?.plan.name || "Trial"} plan allows {batchLimit} images per batch and {me?.plan.images_per_month || 250} images per month. PixelPro standardizes each part, flags likely duplicates and exports a manifest alongside the processed images.</p>
+          <section className={styles.heroPanel}>
+            <div className={styles.heroCopy}>
+              <div className={styles.heroEyebrow}><Sparkles size={15} /> Smart catalog processing</div>
+              <h2>Upload your product images. PixelPro does the rest.</h2>
+              <p>No editing experience needed. Upload auto-part photos, click process, and PixelPro automatically cleans, centers, standardizes and packages the catalog for you.</p>
             </div>
-            <button className="button button-ghost" onClick={auditFirstImage} disabled={!files.length || auditing}>
-              {auditing ? <Loader2 size={17} className="spin" /> : <ScanSearch size={17} />} Audit first image
-            </button>
-          </div>
+            <div className={styles.heroStats}>
+              <div className={styles.statPill}><small>Plan</small><strong>{me?.plan.name || "Trial"}</strong></div>
+              <div className={styles.statPill}><small>Batch limit</small><strong>{batchLimit} images</strong></div>
+              <div className={styles.statPill}><small>Remaining</small><strong>{monthlyRemaining} images</strong></div>
+            </div>
+          </section>
 
-          <div className="studio-grid">
-            <section className="studio-card studio-upload-card">
-              <div className="card-heading"><div><small>STEP 1</small><h3>Upload product images</h3></div><span>{files.length}/{currentUploadLimit}</span></div>
-              <div className="drop-zone" onDragOver={(e) => e.preventDefault()} onDrop={dropFiles}>
-                <input id="catalog-files" type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={chooseFiles} disabled={monthlyRemaining === 0} />
-                <label htmlFor="catalog-files">
-                  <span className="upload-icon"><UploadCloud size={28} /></span>
-                  <strong>{monthlyRemaining === 0 ? "Monthly image quota reached" : "Drop supplier or warehouse images here"}</strong>
-                  <span>{monthlyRemaining === 0 ? "Choose a higher plan when billing is enabled" : "or click to browse your computer"}</span>
-                  <small>JPG, PNG, WEBP · 20MB each · {monthlyRemaining} monthly images remaining</small>
-                </label>
+          <section className={styles.mainCard}>
+            <div className={styles.cardTop}>
+              <div className={styles.stepBlock}>
+                <span className={styles.stepBadge}>01</span>
+                <div><strong>Upload images</strong><span>Select one image or a complete supplier batch</span></div>
+              </div>
+              <span className={styles.smartTag}><CheckCircle2 size={14} /> Smart defaults ready</span>
+            </div>
+
+            <div className={styles.workspaceGrid}>
+              <div className={styles.uploadColumn}>
+                <div className={styles.dropZone} onDragOver={(event) => event.preventDefault()} onDrop={dropFiles}>
+                  <input
+                    id="catalog-files"
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    multiple
+                    onChange={chooseFiles}
+                    disabled={monthlyRemaining === 0}
+                  />
+                  <label htmlFor="catalog-files" className={styles.dropContent}>
+                    <span className={styles.uploadIcon}><UploadCloud size={30} /></span>
+                    <strong>{monthlyRemaining === 0 ? "Monthly image quota reached" : "Drop your auto-part images here"}</strong>
+                    <span>{monthlyRemaining === 0 ? "Upgrade your plan to process more images" : "or click anywhere in this box to choose files"}</span>
+                    <small>JPG, PNG or WEBP · up to 20MB each · maximum {currentUploadLimit} images right now</small>
+                  </label>
+                </div>
+
+                {files.length > 0 && (
+                  <div className={styles.previewArea}>
+                    <div className={styles.previewHeader}>
+                      <strong>{files.length} image{files.length === 1 ? "" : "s"} ready</strong>
+                      <button className={styles.clearButton} onClick={() => { setFiles([]); setAudit(null); }}><X size={14} /> Clear</button>
+                    </div>
+                    <div className={styles.previewGrid}>
+                      {previews.map(({ file, url }) => (
+                        <div className={styles.previewTile} key={`${file.name}-${file.lastModified}`}>
+                          <img src={url} alt="" />
+                          <span>{file.name}</span>
+                        </div>
+                      ))}
+                      {files.length > 12 && <div className={styles.previewMore}>+{files.length - 12}<small>more</small></div>}
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {files.length > 0 && (
-                <div className="preview-area">
-                  <div className="preview-top"><strong>{files.length} images selected</strong><button onClick={() => setFiles([])}><X size={15} /> Clear</button></div>
-                  <div className="preview-grid">
-                    {previews.map(({ file, url }) => <div className="preview-tile" key={`${file.name}-${file.lastModified}`}><img src={url} alt="" /><span>{file.name}</span></div>)}
-                    {files.length > 8 && <div className="preview-more">+{files.length - 8}<small>more</small></div>}
+              <aside className={styles.actionColumn}>
+                <div className={styles.actionHeader}>
+                  <small>STEP 02</small>
+                  <h3>Ready to process</h3>
+                  <p>PixelPro will use the recommended automotive catalog settings automatically.</p>
+                </div>
+
+                <div className={styles.defaultCard}>
+                  <div className={styles.defaultTop}>
+                    <span className={styles.defaultIcon}><FileCheck2 size={17} /></span>
+                    <div>
+                      <strong>{selectedPreset?.label || "Auto Parts — White Marketplace"}</strong>
+                      <span>{selectedPreset ? `${selectedPreset.width} × ${selectedPreset.height} · ${selectedPreset.output_format}` : "1600 × 1600 · JPEG"}</span>
+                    </div>
                   </div>
                 </div>
-              )}
-            </section>
 
-            <section className="studio-card settings-card">
-              <div className="card-heading"><div><small>STEP 2</small><h3>Catalog standard</h3></div><Settings2 size={20} /></div>
-              <label className="field-label">Preset
-                <select value={preset} onChange={(e) => setPreset(e.target.value)}>
-                  {Object.entries(presets).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}
-                </select>
-              </label>
-              {presets[preset] && <div className="preset-note"><FileCheck2 size={17} /><div><strong>{presets[preset].width} × {presets[preset].height} · {presets[preset].output_format}</strong><span>{presets[preset].description}</span></div></div>}
-              <div className="field-pair">
-                <label className="field-label">Vendor / supplier<input value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="Bosch / Supplier A" /></label>
-                <label className="field-label">Fallback SKU prefix<input value={skuPrefix} onChange={(e) => setSkuPrefix(e.target.value)} placeholder="PART" /></label>
-              </div>
-              <label className="field-label">Job name<input value={jobName} onChange={(e) => setJobName(e.target.value)} /></label>
-              <div className="field-pair">
-                <label className="field-label">Optional background override<input value={background} onChange={(e) => setBackground(e.target.value)} placeholder="#FFFFFF" /></label>
-                <label className="field-label">Product scale<input type="number" min="0.2" max="0.95" step="0.01" value={productScale} onChange={(e) => setProductScale(e.target.value)} /></label>
-              </div>
-              <div className="setting-checks">
-                <span><CheckCircle2 size={16} /> Preserve physical labels/markings</span>
-                <span><CheckCircle2 size={16} /> Flag possible duplicate images</span>
-                <span><CheckCircle2 size={16} /> Generate CSV manifest</span>
-              </div>
-            </section>
-          </div>
+                <div className={styles.autoList}>
+                  <span className={styles.autoItem}><CheckCircle2 size={15} /> Clean inconsistent backgrounds</span>
+                  <span className={styles.autoItem}><CheckCircle2 size={15} /> Center products with consistent spacing</span>
+                  <span className={styles.autoItem}><CheckCircle2 size={15} /> Preserve physical labels and part markings</span>
+                  <span className={styles.autoItem}><CheckCircle2 size={15} /> Flag likely duplicate photos</span>
+                  <span className={styles.autoItem}><CheckCircle2 size={15} /> Create catalog manifest and batch report</span>
+                </div>
+
+                <button
+                  className={styles.processButton}
+                  onClick={processCatalog}
+                  disabled={!files.length || processing || monthlyRemaining === 0}
+                >
+                  {processing ? <><Loader2 size={18} className={styles.spin} /> Processing {files.length} image{files.length === 1 ? "" : "s"}…</> : <><CloudDownload size={18} /> {files.length ? `Process ${files.length} image${files.length === 1 ? "" : "s"}` : "Upload images to start"}</>}
+                </button>
+
+                <button className={styles.auditButton} onClick={auditFirstImage} disabled={!files.length || auditing}>
+                  {auditing ? <Loader2 size={16} className={styles.spin} /> : <ScanSearch size={16} />} Optional quality check
+                </button>
+
+                <button className={styles.advancedToggle} onClick={() => setShowAdvanced((value) => !value)}>
+                  <span><Settings2 size={15} /> Advanced settings</span>
+                  <span>{showAdvanced ? "Hide" : "Show"}</span>
+                </button>
+
+                {showAdvanced && (
+                  <div className={styles.advancedPanel}>
+                    <label className={styles.fieldLabel}>Output preset
+                      <select value={preset} onChange={(event) => { setPreset(event.target.value); setProductScale(""); setBackground(""); }}>
+                        {Object.entries(presets).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}
+                      </select>
+                    </label>
+                    {selectedPreset && <div className={styles.presetHint}>{selectedPreset.description}</div>}
+                    <div className={styles.fieldPair}>
+                      <label className={styles.fieldLabel}>Vendor / supplier
+                        <input value={vendor} onChange={(event) => setVendor(event.target.value)} placeholder="Optional" />
+                      </label>
+                      <label className={styles.fieldLabel}>SKU prefix
+                        <input value={skuPrefix} onChange={(event) => setSkuPrefix(event.target.value)} placeholder="PART" />
+                      </label>
+                    </div>
+                    <label className={styles.fieldLabel}>Job name
+                      <input value={jobName} onChange={(event) => setJobName(event.target.value)} />
+                    </label>
+                    <div className={styles.fieldPair}>
+                      <label className={styles.fieldLabel}>Background override
+                        <input value={background} onChange={(event) => setBackground(event.target.value)} placeholder={selectedPreset?.background || "Use preset"} />
+                      </label>
+                      <label className={styles.fieldLabel}>Product scale override
+                        <input type="number" min="0.2" max="0.95" step="0.01" value={productScale} onChange={(event) => setProductScale(event.target.value)} placeholder={selectedPreset?.product_scale?.toString() || "Use preset"} />
+                      </label>
+                    </div>
+                  </div>
+                )}
+              </aside>
+            </div>
+          </section>
 
           {audit && (
-            <section className={`audit-card audit-${audit.status}`}>
-              <div className="audit-score"><strong>{audit.score}</strong><span>/100</span></div>
-              <div><small>QUALITY AUDIT · {audit.filename}</small><h3>{audit.status === "ready" ? "Ready for processing" : "Review recommended"}</h3>
-                {audit.issues.length ? <ul>{audit.issues.map((issue) => <li key={issue}><AlertTriangle size={15} /> {issue}</li>)}</ul> : <p>No major catalog-quality issues detected.</p>}
+            <section className={styles.auditCard}>
+              <div className={styles.auditScore}><strong>{audit.score}</strong><span>/100</span></div>
+              <div className={styles.auditCopy}>
+                <small>QUALITY AUDIT · {audit.filename}</small>
+                <h3>{audit.status === "ready" ? "Ready for processing" : "Review recommended"}</h3>
+                {audit.issues.length ? (
+                  <ul>{audit.issues.map((issue) => <li key={issue}><AlertTriangle size={14} /> {issue}</li>)}</ul>
+                ) : <p>No major catalog-quality issues detected.</p>}
               </div>
             </section>
           )}
 
-          <section className="export-card">
-            <div className="export-copy">
-              <span className="export-icon"><FileArchive size={25} /></span>
-              <div><small>STEP 3</small><h3>Process and export catalog</h3><p>Your ZIP will contain normalized product images, <code>catalog-manifest.csv</code> and <code>batch-report.json</code>.</p></div>
+          {message && <div className={styles.message}><CheckCircle2 size={17} /> <span>{message}</span></div>}
+
+          <section className={styles.history} id="history">
+            <div className={styles.historyHeader}>
+              <div><small>OPERATIONS</small><h2>Recent jobs</h2></div>
+              <button className={styles.refreshButton} onClick={refreshAccount}>Refresh</button>
             </div>
-            <button className="button button-primary button-large" onClick={processCatalog} disabled={!files.length || processing || monthlyRemaining === 0}>
-              {processing ? <><Loader2 size={18} className="spin" /> Processing {files.length} images…</> : <><CloudDownload size={18} /> Process & download ZIP</>}
-            </button>
-          </section>
-
-          {message && <div className="workspace-message"><CheckCircle2 size={18} /> {message}</div>}
-
-          <section className="history-section" id="history">
-            <div className="history-heading"><div><small>OPERATIONS</small><h2>Recent jobs</h2></div><button className="button button-ghost" onClick={refreshAccount}>Refresh</button></div>
-            <div className="jobs-table">
-              <div className="job-row job-header"><span>Job</span><span>Status</span><span>Preset</span><span>Images</span><span>Created</span><span /></div>
-              {jobs.length === 0 ? <div className="empty-jobs"><Images size={26} /><strong>No catalog jobs yet</strong><span>Your first processed batch will appear here.</span></div> : jobs.map((job) => (
-                <div className="job-row" key={job.id}>
-                  <span><strong>{job.name}</strong><small>{job.id}</small></span>
-                  <span><em className={`job-status ${job.status}`}>{job.status.replaceAll("_", " ")}</em></span>
+            <div className={styles.jobs}>
+              <div className={`${styles.jobRow} ${styles.jobHead}`}><span>Job</span><span>Status</span><span>Preset</span><span>Images</span><span>Created</span><span /></div>
+              {jobs.length === 0 ? (
+                <div className={styles.empty}><Images size={25} /><strong>No catalog jobs yet</strong><span>Your first processed batch will appear here.</span></div>
+              ) : jobs.map((job) => (
+                <div className={styles.jobRow} key={job.id}>
+                  <span className={styles.jobMain}><strong>{job.name}</strong><small>{job.id}</small></span>
+                  <span><em className={styles.status}>{job.status.replaceAll("_", " ")}</em></span>
                   <span>{presets[job.preset]?.label || job.preset}</span>
-                  <span>{job.completed}/{job.total}{job.failed ? <small>{job.failed} failed</small> : null}</span>
+                  <span>{job.completed}/{job.total}{job.failed ? ` · ${job.failed} failed` : ""}</span>
                   <span>{new Date(job.created_at).toLocaleDateString()}</span>
-                  <span><ChevronRight size={17} /></span>
+                  <span><ChevronRight size={16} /></span>
                 </div>
               ))}
             </div>
