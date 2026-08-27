@@ -1,0 +1,34 @@
+services:
+  api:
+    build:
+      context: ./apps/api
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    environment:
+      - PIXELPRO_MAX_UPLOAD_MB=20
+      - PIXELPRO_MAX_BATCH=50
+      - PIXELPRO_REMBG_MODEL=u2netp
+      - PIXELPRO_REMBG_POST_PROCESS=false
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_VISION_MODEL=${GROQ_VISION_MODEL:-qwen/qwen3.6-27b}
+    volumes:
+      - ./apps/api:/app
+      - rembg-models:/root/.u2net
+
+  web:
+    build:
+      context: ./apps/web
+    command: npm run dev -- --hostname 0.0.0.0
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    volumes:
+      - ./apps/web:/app
+      - /app/node_modules
+    depends_on:
+      - api
+
+volumes:
+  rembg-models:
