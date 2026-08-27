@@ -11,7 +11,7 @@ background cleanup
         ↓
 part centering + scale normalization
         ↓
-automotive catalog preset
+automotive / marketplace profile
         ↓
 quality checks + possible duplicate detection
         ↓
@@ -24,7 +24,7 @@ This branch is the commercial automotive V1:
 
 ## Product positioning
 
-PixelPro is not positioned as a generic photo editor. The product is designed around a painful catalog-operations workflow: automotive teams receiving many inconsistent product images from suppliers, warehouses or dismantled vehicles and needing a consistent ecommerce standard.
+PixelPro is not positioned as a generic photo editor. The product is designed around a catalog-operations workflow: automotive teams receiving many inconsistent product images from suppliers, warehouses or dismantled vehicles and needing a repeatable ecommerce standard.
 
 ### Target customers
 
@@ -46,12 +46,15 @@ PixelPro is not positioned as a generic photo editor. The product is designed ar
 - Processing job history
 - Responsive automotive Catalog Studio
 - Trial / Starter / Business / Agency pricing model
+- Server-enforced plan quotas and per-batch limits
 
 ### Automotive Catalog Studio
 
-- Up to 200 images per catalog batch by default
+- Plan-aware batch limits: 25 / 100 / 250 / 500 images
+- Monthly plan quotas: 250 / 1,000 / 5,000 / 20,000 images
 - JPG, PNG and WEBP input
 - Automotive-specific image presets
+- Versioned Amazon, eBay and Shopify starting profiles
 - Background removal
 - Product centering
 - Repeatable margins / product occupancy
@@ -84,16 +87,18 @@ PixelPro is not positioned as a generic photo editor. The product is designed ar
 
 > PixelPro should only process imagery the customer owns or is authorized to edit. Genuine manufacturer labels, product tags, part numbers and physical product markings should be preserved unless the catalog owner intentionally chooses otherwise.
 
-## Automotive presets
+## Automotive and marketplace profiles
 
 | Preset | Purpose | Output |
 | --- | --- | --- |
-| `auto-white-1600` | General marketplace/catalog starting point | 1600×1600 JPEG |
+| `auto-white-1600` | General white automotive catalog | 1600×1600 JPEG |
+| `amazon-main-1600` | Amazon main-image starting profile | 1600×1600 JPEG |
+| `ebay-1600` | eBay listing starting profile | 1600×1600 JPEG |
 | `auto-blue-1024` | Dealer/internal blue catalog | 1024×1024 JPEG |
 | `auto-studio-1600` | Premium neutral product page | 1600×1600 JPEG |
-| `auto-shopify-2048` | Large web-commerce asset | 2048×2048 WEBP |
+| `auto-shopify-2048` | Shopify square storefront asset | 2048×2048 WEBP |
 
-Marketplace requirements can change. These are editable production starting points, not compliance guarantees.
+Marketplace profiles are versioned production starting points, not permanent compliance guarantees. Rules can change by marketplace, category, region and date. PixelPro exposes profile verification metadata through `GET /api/v1/automotive/marketplace-profiles` so operators can re-check official guidance before publishing.
 
 ## Architecture
 
@@ -110,7 +115,9 @@ FastAPI
 │
 ├── account + session API
 ├── usage + job API
+├── plan + quota enforcement
 ├── automotive catalog API
+├── versioned marketplace profiles
 ├── image pipeline
 │   ├── rembg / ONNX
 │   ├── Pillow
@@ -118,6 +125,7 @@ FastAPI
 │
 └── SQLite commercial-V1 store
     ├── users
+    ├── account_plans
     ├── sessions
     ├── usage_events
     └── jobs
@@ -133,6 +141,7 @@ apps/
     app/
       main.py
       automotive.py
+      plans.py
       platform_store.py
       routes_automotive.py
       routes_platform.py
@@ -144,6 +153,8 @@ apps/
       dashboard/page.tsx
       pricing/page.tsx
       components/SiteNav.tsx
+docs/
+  ACQUISITION_READINESS.md
 .github/workflows/ci.yml
 ```
 
@@ -211,6 +222,7 @@ Authorization: Bearer <session-token>
 
 - `GET /api/v1/automotive/profile`
 - `GET /api/v1/automotive/presets`
+- `GET /api/v1/automotive/marketplace-profiles`
 - `POST /api/v1/automotive/roi`
 - `POST /api/v1/automotive/audit`
 - `POST /api/v1/automotive/process-catalog`
@@ -240,16 +252,18 @@ pixelpro-job_<id>.zip
 └── batch-report.json
 ```
 
-The manifest contains original filename, derived SKU, vendor, preset, processing status, output filename, possible duplicate reference, image dimensions, sharpness, resolution status and notes.
+The manifest contains original filename, derived SKU, vendor, preset, marketplace profile, processing status, output filename, possible duplicate reference, image dimensions, sharpness, resolution status and notes.
 
 ## Pricing model in the UI
 
-The commercial V1 currently presents a validation pricing model:
+The commercial V1 currently presents and enforces a validation pricing model:
 
-- Trial — 250 images/month
-- Starter — $49/month, 1,000 images
-- Business — $149/month, 5,000 images
-- Agency — $399/month, 20,000 images
+| Plan | Monthly price | Monthly images | Batch limit |
+| --- | ---: | ---: | ---: |
+| Trial | $0 | 250 | 25 |
+| Starter | $49 | 1,000 | 100 |
+| Business | $149 | 5,000 | 250 |
+| Agency | $399 | 20,000 | 500 |
 
 These numbers are deliberately configurable. Before public launch, validate willingness to pay and measure actual compute/storage/support cost. Do not represent modeled ROI as customer-proven savings until real customer data exists.
 
@@ -261,10 +275,13 @@ These numbers are deliberately configurable. Before public launch, validate will
 - Company workspace
 - Automotive-specific UI and positioning
 - Automotive batch processing
+- Versioned marketplace starting profiles
 - Catalog export contract
+- Plan/quota enforcement
 - Usage and job persistence
 - Responsive pricing and marketing UI
 - CI for Python tests and Next.js production build
+- Buyer acquisition-readiness / handover documentation
 
 ### Next production hardening
 
@@ -274,11 +291,11 @@ These numbers are deliberately configurable. Before public launch, validate will
 4. Email verification, password reset and optional SSO.
 5. Real billing provider integration only after pricing validation.
 6. Organization roles and team invitations.
-7. Rate limits, per-plan quota enforcement and API keys.
+7. Rate limits, API keys and stronger abuse controls.
 8. Structured logging, metrics, tracing and error monitoring.
 9. Antivirus/content validation and stricter upload security.
 10. Shopify / WooCommerce / PIM integrations based on customer demand.
-11. Production marketplace profiles versioned against current rules.
+11. Periodic re-verification of marketplace profiles against current rules.
 12. A customer-backed benchmark dataset for auto-part segmentation and catalog QA.
 
 ## Sale / acquisition readiness
@@ -290,10 +307,13 @@ A strategic buyer should be able to understand and transfer:
 - Customer workflow
 - API contract
 - Processing pipeline
-- Pricing model
+- Pricing and quota model
 - Deployment configuration
 - Tests / CI
 - Usage and job data model
+- Marketplace-profile verification approach
 - Remaining production roadmap
+
+See `docs/ACQUISITION_READINESS.md` for the buyer due-diligence, IP/licensing and handover checklist.
 
 The strongest acquisition value will come from real customer traction, recurring revenue, retention, processing volume, measured unit economics and clean transferable IP — not source code alone.
