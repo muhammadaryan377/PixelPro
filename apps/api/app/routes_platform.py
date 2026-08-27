@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Header, HTTPException
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 
 from app.platform_store import (
     authenticate_token,
@@ -51,13 +51,13 @@ PLANS = [
 
 
 class SignUpRequest(BaseModel):
-    email: EmailStr
+    email: str = Field(min_length=5, max_length=254)
     password: str = Field(min_length=8, max_length=128)
     company: str = Field(min_length=2, max_length=120)
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    email: str = Field(min_length=5, max_length=254)
     password: str = Field(min_length=1, max_length=128)
 
 
@@ -89,7 +89,7 @@ def get_plans() -> dict:
 @router.post("/account/signup")
 def signup(payload: SignUpRequest) -> dict:
     try:
-        user = create_user(str(payload.email), payload.password, payload.company)
+        user = create_user(payload.email, payload.password, payload.company)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     token = create_session(user["id"])
@@ -98,7 +98,7 @@ def signup(payload: SignUpRequest) -> dict:
 
 @router.post("/account/login")
 def login(payload: LoginRequest) -> dict:
-    user = verify_user(str(payload.email), payload.password)
+    user = verify_user(payload.email, payload.password)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid email or password")
     token = create_session(user["id"])
